@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">MapsProtoType</string>
+    <string name="title_activity_proto_type_maps">Map</string>
+
+</resources>
