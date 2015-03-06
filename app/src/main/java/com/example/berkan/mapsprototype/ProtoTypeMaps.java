@@ -1,9 +1,17 @@
 package com.example.berkan.mapsprototype;
 
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.app.TaskStackBuilder;
+import android.content.Context;
+import android.content.Intent;
+import android.location.Criteria;
 import android.location.Location;
+import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.support.v4.app.FragmentActivity;
+import android.support.v4.app.NotificationCompat;
 import android.util.Log;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -21,9 +29,10 @@ public class ProtoTypeMaps extends FragmentActivity {
 
     public ArrayList<MarkerOptions> markers;
     public Handler handler;
-
-
+    public MarkerOptions test2;
+    public String provider;
     public LatLng currentLocation;
+    private LocationManager mLocManager;
     private GoogleMap mMap; // Might be null if Google Play services APK is not available.
 
     @Override
@@ -31,6 +40,14 @@ public class ProtoTypeMaps extends FragmentActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_proto_type_maps);
         markers = new ArrayList<MarkerOptions>();
+
+        mLocManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        Criteria criteria = new Criteria();
+        criteria.setAccuracy(Criteria.ACCURACY_LOW);
+        provider = mLocManager.getBestProvider(criteria, true);
+
+        Location location = mLocManager.getLastKnownLocation(provider);
+
 
         setUpMapIfNeeded();
 
@@ -71,38 +88,7 @@ public class ProtoTypeMaps extends FragmentActivity {
                 @Override
                 public void onMyLocationChange(Location location) {
                     LatLng loc = new LatLng(location.getLatitude(), location.getLongitude());
-                    double minDist = 1E38;
-                    int minIndex = -1;
-                    for (int i = 0; i < markers.size(); i++) {
-                        Location kaas = new Location("Marker");
-                        kaas.setLatitude(markers.get(i).getPosition().latitude);
-                        kaas.setLongitude(markers.get(i).getPosition().longitude);
-                        kaas.setTime(new Date().getTime());
-                        float test = location.distanceTo(kaas);
-                        if (test < minDist) {
-                            minDist = test;
-                            minIndex = i;
-                        }
-                    }
-                    if (minIndex >= 0) {
-                        MarkerOptions test2 = markers.get(minIndex);
-                        test2.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE));
-                        mMap.addMarker(test2);
-                        Log.d("Test2", "Test2 " + test2.getTitle());
-
-                    }
-
-/*
-                    for (int i = 0; i < markers.size(); i++) {
-                        float[] distance = new float[1];
-                        Location.distanceBetween(loc.latitude, loc.longitude, markers.get(i).getPosition().latitude, markers.get(i).getPosition().longitude, distance);
-                        //Log.d("Distance", "Distance of marker" + distance[0]);
-                        if(distance[0] < 100.0) {
-                            Log.d("Distance below 100 m", "Distance below 100 m" + distance[0]);
-                        }
-                    }*/
-
-
+                    findNearestMarker();
                     mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(loc, 10.0f));
                     Log.d("Latitude", "Current Latitude " + location.getLatitude());
                     Log.d("Longitude", "Current Longitude " + location.getLongitude());
@@ -117,6 +103,58 @@ public class ProtoTypeMaps extends FragmentActivity {
         }
     }
 
+    public void findNearestMarker() {
+        double minDist = 1E38;
+        int minIndex = -1;
+        for (int i = 0; i < markers.size(); i++) {
+            Location kaas = new Location("Marker");
+            Location currentLoc = mLocManager.getLastKnownLocation(provider);
+
+            kaas.setLatitude(markers.get(i).getPosition().latitude);
+            kaas.setLongitude(markers.get(i).getPosition().longitude);
+            kaas.setTime(new Date().getTime());
+            float test = currentLoc.distanceTo(kaas);
+            if (test < minDist) {
+                minDist = test;
+                minIndex = i;
+            }
+        }
+        if (minIndex >= 0) {
+            test2 = markers.get(minIndex);
+            test2.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE));
+            mMap.addMarker(test2);
+            Log.d("Test2", "Test2 " + test2.getTitle());
+            notificationTest(test2);
+        } else {
+            test2.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE));
+        }
+    }
+
+    public void notificationTest(MarkerOptions test) {
+        Location kaas = new Location("Marker");
+        kaas.setLatitude(test.getPosition().latitude);
+        kaas.setLongitude(test.getPosition().longitude);
+        Location currentLoc = mLocManager.getLastKnownLocation(provider);
+        float distanceInMeters = currentLoc.distanceTo(kaas);
+        if (distanceInMeters < 10000) { // 10000 meter wordt er notifcatie gegooid dit moet natuurlijk minder is om te teste :D
+            NotificationCompat.Builder mBuilder =
+                    new NotificationCompat.Builder(this)
+                            .setContentTitle("Notifcation test ")
+                            .setContentText(test.getTitle() + distanceInMeters)
+                            .setSmallIcon(R.drawable.ic_launcher);
+            Intent resultIntent = new Intent(this, ProtoTypeMaps.class);
+            TaskStackBuilder stackBuilder = TaskStackBuilder.create(this);
+            stackBuilder.addParentStack(ProtoTypeMaps.class);
+            stackBuilder.addNextIntent(resultIntent);
+            PendingIntent resultPendingIntent = stackBuilder.getPendingIntent(0, PendingIntent.FLAG_UPDATE_CURRENT);
+            mBuilder.setContentIntent(resultPendingIntent);
+            NotificationManager mNotificationManager =
+                    (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            mNotificationManager.notify(0, mBuilder.build());
+        }
+
+
+    }
 
     private void setUpMap() {
         Thread t1 = new Thread(new Runnable() {
@@ -124,36 +162,31 @@ public class ProtoTypeMaps extends FragmentActivity {
             public void run() {
                 PositionDAOimpl positionDao = new PositionDAOimpl();
                 markers = positionDao.getMarkers();
-                Log.d("Size of markers inside position thread", "Size of markers" + markers.size());
             }
         });
         t1.start();
         try {
             t1.join();
-            Log.d("Joined UI thread and position thread", "Joined UI & position thread");
+
         } catch (InterruptedException e) {
             e.printStackTrace();
-            Log.d("UI Thread and position thread merge failed", "Merging threads failed");
         }
 
         addMarkersToMap();
+
+
         // Causes Choreographer to skip frames, this can be fixed by seperating the addMarkerToMap methods to another class were ASyncTask is extended.
 
     }
 
 
     public void addMarkersToMap() {
-
-
-        Log.d("Size of markers after join ", "Size of markers inside UI Thread" + markers.size());
         for (MarkerOptions m : markers) {
             mMap.addMarker(m);
         }
     }
 
-    public void CalculateRadius() {
 
-    }
 
     public ArrayList<MarkerOptions> getMarkers() {
         return markers;
